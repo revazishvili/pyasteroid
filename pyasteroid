@@ -1,0 +1,149 @@
+import random
+from kivy.app import App
+from kivy.uix.widget import Widget
+from kivy.graphics import Rectangle
+from kivy.clock import Clock
+from kivy.core.window import Window
+from kivy.uix.floatlayout import FloatLayout
+from kivy.uix.label import Label
+
+PLAYER_SIZE = (50, 50)
+BULLET_SIZE = (5, 20)
+ENEMY_SPEED = 200
+BULLET_SPEED = 400
+GAME_SPEED = 1.0 / 60.0
+
+class GameWidget(FloatLayout):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self._player_pos = [Window.width // 2 - PLAYER_SIZE[0] // 2, 50]
+        self._enemies = []
+        self._bullets = []
+        self._score = 0
+        self._score_label = Label(text="Score: 0", pos=(20, Window.height - 50))
+
+        with self.canvas:
+            self.bg = Rectangle(size=Window.size, source='bg.png')
+            self.player = Rectangle(source='player.png', pos=self._player_pos, size=PLAYER_SIZE)
+
+        Clock.schedule_interval(self._game_loop, GAME_SPEED)
+        self._keyboard = Window.request_keyboard(self._keyboard_closed, self)
+        self._keyboard.bind(on_key_down=self._on_keyboard_down)
+        self._keyboard.bind(on_key_up=self._on_keyboard_up)
+        self._keys_pressed = set()
+
+    def _keyboard_closed(self):
+        self._keyboard.unbind(on_key_down=self._on_keyboard_down)
+        self._keyboard.unbind(on_key_up=self._on_keyboard_up)
+        self._keyboard = None
+
+    def _on_keyboard_down(self, keyboard, keycode, text, modifiers):
+        self._keys_pressed.add(keycode[1])
+        if keycode[1] == 'spacebar':
+            self._shoot_bullet()
+        return True
+
+    def _on_keyboard_up(self, keyboard, keycode):
+        self._keys_pressed.discard(keycode[1])
+        return True
+
+    def _game_loop(self, dt):
+        if random.random() < 0.02:
+            self._add_enemy()
+
+        self._update_enemies(dt)
+        self._update_bullets(dt)
+        self._move_player()
+        self._update_score_label()
+
+    def _update_score_label(self):
+        self._score_label.text = f"Score: {self._score}"
+
+    def _add_enemy(self):
+        x = random.randint(0, Window.width - 100)
+        size = random.randint(30, 100)
+        enemy = Rectangle(source=random.choice(['asteroid1.png', 'asteroid2.png', 'asteroid3.png']), pos=(x, Window.height), size=(size, size))
+        with self.canvas:
+            self.canvas.add(enemy)
+        self._enemies.append(enemy)
+
+    def _shoot_bullet(self):
+        bullet_pos = [self._player_pos[0] + PLAYER_SIZE[0] // 2 - BULLET_SIZE[0] // 2, self._player_pos[1] + PLAYER_SIZE[1]]
+        bullet = Rectangle(source='bullet.png', pos=bullet_pos, size=BULLET_SIZE)
+        with self.canvas:
+            self.canvas.add(bullet)
+        self._bullets.append(bullet)
+
+    def _update_enemies(self, dt):
+        for enemy in self._enemies[:]:
+            pos = list(enemy.pos)
+            pos[1] -= ENEMY_SPEED * dt
+            enemy.pos = tuple(pos)
+            if enemy.pos[1] < -enemy.size[1]:
+                self._enemies.remove(enemy)
+                self.canvas.remove(enemy)
+                self._reduce_life()
+
+    def _update_bullets(self, dt):
+        for bullet in self._bullets[:]:
+            pos = list(bullet.pos)
+            pos[1] += BULLET_SPEED * dt
+            bullet.pos = tuple(pos)
+            if bullet.pos[1] > Window.height:
+                self._bullets.remove(bullet)
+                self.canvas.remove(bullet)
+            else:
+                for enemy in self._enemies[:]:
+                    if self._bullet_collision(bullet, enemy):
+                        self._bullets.remove(bullet)
+                        self._enemies.remove(enemy)
+                        self.canvas.remove(bullet)
+                        self.canvas.remove(enemy)
+                        self._score += 1
+                        break
+
+    def _bullet_collision(self, bullet, enemy):
+        bullet_bbox = bullet.pos + tuple(bullet.size)
+        enemy_bbox = enemy.pos + tuple(enemy.size)
+        return self._bbox_collision(bullet_bbox, enemy_bbox)
+
+    def _bbox_collision(self, bbox1, bbox2):
+        x_overlap = (bbox1[0] <= bbox2[0] <= bbox1[0] + bbox1[2]) or \
+                    (bbox2[0] <= bbox1[0] <= bbox2[0] + bbox2[2])
+        y_overlap = (bbox1[1] <= bbox2[1] <= bbox1[1] + bbox1[3]) or \
+                    (bbox2[1] <= bbox1[1] <= bbox2[1] + bbox2[3])
+        return x_overlap and y_overlap
+
+    def _move_player(self, *args):
+        x, y = self._player_pos
+        if 'left' in self._keys_pressed:
+            x -= 10
+        if 'right' in self._keys_pressed:
+            x += 10
+        x = max(0, min(x, Window.width - PLAYER_SIZE[0]))
+        self._player_pos = [x, y]
+        self.player.pos = self._player_pos
+
+    def _reduce_life(self):
+        self._score += 1
+        if self._score >= 5:  # If life exceeds 5
+            self._reset_game()
+
+    def _reset_game(self):
+        self._player_pos = [Window.width // 2 - PLAYER_SIZE[0] // 2, 50]
+        self._enemies = []
+        self._bullets = []
+        self._score = 0
+        self.canvas.clear()
+        with self.canvas:
+            self.bg = Rectangle(size=Window.size, source='bg.png')
+            self.player = Rectangle(source='player.png', pos=self._player_pos, size=PLAYER_SIZE)
+
+class GameApp(App):
+    def build(self):
+        game = GameWidget()
+        game.add_widget(game._score_label)
+        return game
+
+if __name__ == '__main__':
+    GameApp().run()
