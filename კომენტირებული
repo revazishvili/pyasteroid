@@ -1,0 +1,151 @@
+import random  # იმპორტირებულია რენდომ მოდული შემთხვევითი რიცხვების გენერირებისთვის
+from kivy.app import App  # იმპორტირებულია App კლასი Kivy-დან აპლიკაციის შესაქმნელად
+from kivy.uix.widget import Widget  # იმპორტირებულია Widget კლასი Kivy-დან ვიჯეტების შესაქმნელად
+from kivy.graphics import Rectangle  # იმპორტირებულია Rectangle კლასი Kivy-დან გრაფიკული ობიექტების შესაქმნელად
+from kivy.clock import Clock  # იმპორტირებულია Clock კლასი Kivy-დან დროის სენსორისთვის
+from kivy.core.window import Window  # იმპორტირებულია Window კლასი Kivy-დან თამაშის ფანჯრის მართვისთვის
+from kivy.uix.floatlayout import FloatLayout  # იმპორტირებულია FloatLayout კლასი Kivy-დან ვიჯეტების განლაგებისთვის
+from kivy.uix.label import Label  # იმპორტირებულია Label კლასი Kivy-დან ტექსტის ჩვენებისთვის
+
+PLAYER_SIZE = (50, 50)  # გმირის (ხომალდის) ზომა
+BULLET_SIZE = (5, 20)  # ტყვიების ზომა
+ENEMY_SPEED = 200  # მტრების (ასტეროიდების) სიჩქარე პიქსელებში/წამში
+BULLET_SPEED = 400  # ტყვიების სიჩქარე პიქსელებში/წამში
+GAME_SPEED = 1.0 / 60.0  # თამაშის განახლების სიხშირე (წამი)
+
+class GameWidget(FloatLayout):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)  # მშობელი კლასის კონსტრუქტორის გამოძახება
+        self._player_pos = [Window.width // 2 - PLAYER_SIZE[0] // 2, 50]  # გმირის საწყისი პოზიცია
+        self._enemies = []  # მტრების სია
+        self._bullets = []  # ტყვიების სია
+        self._score = 0  # საწყისი ქულა
+        self._score_label = Label(text="Score: 0", pos=(20, Window.height - 50))  # ქულის ლეიბლი
+
+        with self.canvas:  # თამაშის გრაფიკული ელემენტების რენდერინგი
+            self.bg = Rectangle(size=Window.size, source='bg.png')  # ფონი
+            self.player = Rectangle(source='player.png', pos=self._player_pos, size=PLAYER_SIZE)  # გმირი
+
+        Clock.schedule_interval(self._game_loop, GAME_SPEED)  # თამაშის ციკლის დაწყება
+        self._keyboard = Window.request_keyboard(self._keyboard_closed, self)  # კლავიატურის მართვისთვის
+        self._keyboard.bind(on_key_down=self._on_keyboard_down)  # კლავიატურის დაჭერის ივენთის მიბმა
+        self._keyboard.bind(on_key_up=self._on_keyboard_up)  # კლავიატურის გაშვების ივენთის მიბმა
+        self._keys_pressed = set()  # დაჭერილი კლავიშების სია
+
+    def _keyboard_closed(self):
+        self._keyboard.unbind(on_key_down=self._on_keyboard_down)  # კლავიატურის დაჭერის ივენთის განბმა
+        self._keyboard.unbind(on_key_up=self._on_keyboard_up)  # კლავიატურის გაშვების ივენთის განბმა
+        self._keyboard = None  # კლავიატურის გათიშვა
+
+    def _on_keyboard_down(self, keyboard, keycode, text, modifiers):
+        self._keys_pressed.add(keycode[1])  # დაჭერილი კლავიშის დამატება სიაში
+        if keycode[1] == 'spacebar':  # თუ დაჭერილია სივრცის კლავიში
+            self._shoot_bullet()  # ტყვიის გასროლა
+        return True  # ივენთის დამუშავების დასრულება
+
+    def _on_keyboard_up(self, keyboard, keycode):
+        self._keys_pressed.discard(keycode[1])  # გაშვებული კლავიშის წაშლა სიიდან
+        return True  # ივენთის დამუშავების დასრულება
+
+    def _game_loop(self, dt):
+        if random.random() < 0.02:  # 2% შანსით
+            self._add_enemy()  # მტრის დამატება
+
+        self._update_enemies(dt)  # მტრების განახლება
+        self._update_bullets(dt)  # ტყვიების განახლება
+        self._move_player()  # გმირის გადაადგილება
+        self._update_score_label()  # ქულის ლეიბლის განახლება
+
+    def _update_score_label(self):
+        self._score_label.text = f"Score: {self._score}"  # ქულის ლეიბლის ტექსტის განახლება
+
+    def _add_enemy(self):
+        x = random.randint(0, Window.width - 100)  # შემთხვევითი X კოორდინატი
+        size = random.randint(30, 100)  # შემთხვევითი ზომა
+        enemy = Rectangle(source=random.choice(['asteroid1.png', 'asteroid2.png', 'asteroid3.png']), pos=(x, Window.height), size=(size, size))  # ახალი მტრის შექმნა
+        with self.canvas:
+            self.canvas.add(enemy)  # მტრის დამატება canvas-ზე
+        self._enemies.append(enemy)  # მტრის დამატება სიაში
+
+    def _shoot_bullet(self):
+        bullet_pos = [self._player_pos[0] + PLAYER_SIZE[0] // 2 - BULLET_SIZE[0] // 2, self._player_pos[1] + PLAYER_SIZE[1]]  # ტყვიის საწყისი პოზიცია
+        bullet = Rectangle(source='bullet.png', pos=bullet_pos, size=BULLET_SIZE)  # ახალი ტყვიის შექმნა
+        with self.canvas:
+            self.canvas.add(bullet)  # ტყვიის დამატება canvas-ზე
+        self._bullets.append(bullet)  # ტყვიის დამატება სიაში
+
+        def _update_enemies(self, dt):
+            for enemy in self._enemies[:]:  # ითვალისწინებს იმას, რომ სია შეიძლება შეიცვალოს ციკლის დროს
+                pos = list(enemy.pos)  # მტრის პოზიციის გადაყვანა სიაში
+                pos[1] -= ENEMY_SPEED * dt  # Y კოორდინატის შემცირება ENEMY_SPEED-ის შესაბამისად
+                enemy.pos = tuple(pos)  # მტრის პოზიციის განახლება
+                if enemy.pos[1] < -enemy.size[1]:  # თუ მტერი გადავიდა ეკრანის ქვემოთ
+                    self._enemies.remove(enemy)  # მტრის წაშლა სიიდან
+                    self.canvas.remove(enemy)  # მტრის წაშლა canvas-იდან
+                    self._reduce_life()  # სიცოცხლის დაკარგვა
+
+        def _update_bullets(self, dt):
+            for bullet in self._bullets[:]:  # ითვალისწინებს იმას, რომ სია შეიძლება შეიცვალოს ციკლის დროს
+                pos = list(bullet.pos)  # ტყვიის პოზიციის გადაყვანა სიაში
+                pos[1] += BULLET_SPEED * dt  # Y კოორდინატის გაზრდა BULLET_SPEED-ის შესაბამისად
+                bullet.pos = tuple(pos)  # ტყვიის პოზიციის განახლება
+                if bullet.pos[1] > Window.height:  # თუ ტყვია გავიდა ეკრანის ზემოთ
+                    self._bullets.remove(bullet)  # ტყვიის წაშლა სიიდან
+                    self.canvas.remove(bullet)  # ტყვიის წაშლა canvas-იდან
+                else:
+                    for enemy in self._enemies[:]:  # მტრების გადამოწმება შეჯახებაზე
+                        if self._bullet_collision(bullet, enemy):  # თუ ტყვია შეეჯახა მტერს
+                            self._bullets.remove(bullet)  # ტყვიის წაშლა სიიდან
+                            self._enemies.remove(enemy)  # მტრის წაშლა სიიდან
+                            self.canvas.remove(bullet)  # ტყვიის წაშლა canvas-იდან
+                            self.canvas.remove(enemy)  # მტრის წაშლა canvas-იდან
+                            self._score += 1  # ქულის გაზრდა
+                            break  # შეჯახების შემდეგ ციკლის გათავება
+
+        def _bullet_collision(self, bullet, enemy):
+            bullet_bbox = bullet.pos + tuple(bullet.size)  # ტყვიის მოცულობითი არე
+            enemy_bbox = enemy.pos + tuple(enemy.size)  # მტრის მოცულობითი არე
+            return self._bbox_collision(bullet_bbox, enemy_bbox)  # შეჯახების შემოწმება
+
+        def _bbox_collision(self, bbox1, bbox2):
+            # შეჯახების დადგენა მოცულობითი არეების გადაფარვით
+            x_overlap = (bbox1[0] <= bbox2[0] <= bbox1[0] + bbox1[2]) or \
+                        (bbox2[0] <= bbox1[0] <= bbox2[0] + bbox2[2])
+            y_overlap = (bbox1[1] <= bbox2[1] <= bbox1[1] + bbox1[3]) or \
+                        (bbox2[1] <= bbox1[1] <= bbox2[1] + bbox2[3])
+            return x_overlap and y_overlap  # თუ არის გადაფარვა X და Y ღერძებზე, მაშინ შეჯახებაა
+
+        def _move_player(self, *args):
+            x, y = self._player_pos  # გმირის პოზიციის გამოყოფა
+            if 'left' in self._keys_pressed:  # თუ დაჭერილია მარცხენა კლავიში
+                x -= 10  # გმირის გადაადგილება მარცხნივ
+            if 'right' in self._keys_pressed:  # თუ დაჭერილია მარჯვენა კლავიში
+                x += 10  # გმირის გადაადგილება მარჯვნივ
+            x = max(0, min(x, Window.width - PLAYER_SIZE[0]))  # გმირის პოზიციის შეზღუდვა ეკრანის ფარგლებში
+            self._player_pos = [x, y]  # გმირის პოზიციის განახლება
+            self.player.pos = self._player_pos  # გმირის რენდერინგის განახლება
+
+        def _reduce_life(self):
+            self._score += 1  # ქულის გაზრდა (უნდა იყოს self._lives -= 1, რადგან სიცოცხლე უნდა შემცირდეს)
+            if self._score >= 5:  # თუ ქულა აღემატება 5-ს (უნდა იყოს თუ სიცოცხლე გამოილევა)
+                self._reset_game()  # თამაშის გადატვირთვა
+
+        def _reset_game(self):
+            self._player_pos = [Window.width // 2 - PLAYER_SIZE[0] // 2, 50]  # გმირის პოზიციის აღდგენა
+            self._enemies = []  # მტრების სიის გასუფთავება
+            self._bullets = []  # ტყვიების სიის გასუფთავება
+            self._score = 0  # ქულის გადაყენება
+            self.canvas.clear()  # canvas-ის გასუფთავება
+            with self.canvas:
+                self.bg = Rectangle(size=Window.size, source='bg.png')  # ფონის ხელახლა რენდერინგი
+                self.player = Rectangle(source='player.png', pos=self._player_pos,
+                                        size=PLAYER_SIZE)  # გმირის ხელახლა რენდერინგი
+
+    class GameApp(App):
+        def build(self):
+            game = GameWidget()  # თამაშის ვიჯეტის შექმნა
+            game.add_widget(game._score_label)  # ქულის ლეიბლის დამატება ვიჯეტზე
+            return game  # თამაშის ვიჯეტის დაბრუნება
+
+    if __name__ == '__main__':
+        GameApp().run()  # აპლიკაციის გაშვება
